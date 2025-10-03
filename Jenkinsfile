@@ -1,149 +1,174 @@
 pipeline {
-  agent any
+    agent any
 
-  options {
-    timestamps()
-    ansiColor('xterm')
-    disableConcurrentBuilds()
-  }
+    options {
+        timestamps()
+        ansiColor('xterm')
+        disableConcurrentBuilds()
+    }
 
-  environment {
-    PYTHON = 'python3'
-  }
+    environment {
+        PYTHON = 'python3'
+        CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
+    }
 
-  stages {
+    stages {
 
-    stage('Checkout Repositories') {
-      parallel {
-        stage('cbn-devops-code') {
-          steps {
-            dir('CBN_Workflow_PY') {
-              git url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git', branch: 'main'
+        stage('Checkout Repositories') {
+            parallel {
+                stage('CBN Workflow Code') {
+                    steps {
+                        dir('CBN_Workflow_PY') {
+                            git url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git', branch: 'main'
+                        }
+                    }
+                }
+                stage('Source App Code') {
+                    steps {
+                        dir('source_code') {
+                            git url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git', branch: 'master'
+                        }
+                    }
+                }
             }
-          }
         }
-        stage('source-app-code') {
-          steps {
-            dir('source_code') {
-              git url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git', branch: 'master'
+
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    python3 -m pip install --upgrade pip
+                    python3 -m pip install requests
+                '''
             }
-          }
         }
-      }
-    }
 
-    stage('Install dependencies') {
-      steps {
-        sh '''
-          python3 -m pip install --upgrade pip
-          python3 -m pip install requests
-        '''
-      }
-    }
-
-    stage('Verify files availability') {
-      steps {
-        dir('CBN_Workflow_PY') {
-          script {
-            def missing = []
-            ['cbn_config.py', 'run_cbn_workflow.py'].each { f ->
-              if (!fileExists(f)) { missing << f }
+        stage('Verify Required Files') {
+            steps {
+                dir('CBN_Workflow_PY') {
+                    script {
+                        def missing = []
+                        ['cbn_config.py', 'run_cbn_workflow.py'].each { f ->
+                            if (!fileExists(f)) { missing << f }
+                        }
+                        if (missing) {
+                            error "❌ Required file(s) missing: ${missing.join(', ')}"
+                        } else {
+                            echo "✅ All required .py files exist"
+                        }
+                    }
+                }
             }
-            if (missing) {
-              error "❌ Required file(s) missing: ${missing.join(', ')}"
-            } else {
-              echo "✅ All required .py files exist, continuing..."
-            }
-          }
         }
-      }
-    }
 
-    stage('Prepare Input Files') {
-      steps {
-        sh '''#!/bin/bash
-          set -euo pipefail
-          mkdir -p CBN_Workflow_PY/input_files/cpp
-          : > CBN_Workflow_PY/input_files/cpp/merged.cpp
+        stage('Prepare Input Files') {
+            steps {
+                sh '''
+                set -euo pipefail
 
-          files=(
-            "GridCtrl.h"
-            "GridCtrl.cpp"
-            "CellRange.h"
-            "GridCell.h"
-            "GridCell.cpp"
-            "GridCellBase.h"
-            "GridCellBase.cpp"
-            "GridDropTarget.h"
-            "GridDropTarget.cpp"
-            "InPlaceEdit.h"
-            "InPlaceEdit.cpp"
-            "MemDC.h"
-            "TitleTip.h"
-            "TitleTip.cpp"
-          )
+                # Create input directories
+                mkdir -p CBN_Workflow_PY/input_files/cpp
+                mkdir -p CBN_Workflow_PY/input_files/tdd
+                mkdir -p CBN_Workflow_PY/input_files/fdd
 
-          for f in "${files[@]}"; do
-            if [ -f "source_code/$f" ]; then
-              cat "source_code/$f" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
-            elif [ -f "source_code/GridCtrl/$f" ]; then
-              cat "source_code/GridCtrl/$f" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
-            else
-              echo "❌ Missing expected file: $f" >&2
-              exit 1
-            fi
-            echo -e "\\n\\n" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
-          done
+                # Merge C++ files
+                touch CBN_Workflow_PY/input_files/cpp/merged.cpp
+                files=(GridCtrl.h GridCtrl.cpp CellRange.h GridCell.h GridCell.cpp GridCellBase.h GridCellBase.cpp GridDropTarget.h GridDropTarget.cpp InPlaceEdit.h InPlaceEdit.cpp MemDC.h TitleTip.h TitleTip.cpp)
+                for f in "${files[@]}"; do
+                    if [ -f "source_code/$f" ]; then
+                        cat "source_code/$f" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
+                    elif [ -f "source_code/GridCtrl/$f" ]; then
+                        cat "source_code/GridCtrl/$f" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
+                    else
+                        echo "⚠ Missing expected file: $f" >&2
+                    fi
+                    echo -e "\n\n" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
+                done
+                echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp/"
 
-          echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp/"
-        '''
-      }
-    }
+                # Copy TDD/FDD templates if they exist
+                if [ -d "CBN_Workflow_PY/templates/tdd" ]; then
+                    cp CBN_Workflow_PY/templates/tdd/* CBN_Workflow_PY/input_files/tdd/ || true
+                fi
 
-    stage('Run Workflows') {
-      parallel {
-        stage('Generate C++ Docs') {
-          steps {
-            dir('CBN_Workflow_PY') {
-              withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
-                sh 'python3 run_cbn_workflow.py cpp'
-              }
+                if [ -d "CBN_Workflow_PY/templates/fdd" ]; then
+                    cp CBN_Workflow_PY/templates/fdd/* CBN_Workflow_PY/input_files/fdd/ || true
+                fi
+                '''
             }
-          }
         }
-        stage('Generate TDD Docs') {
-          steps {
-            dir('CBN_Workflow_PY') {
-              withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
-                sh 'python3 run_cbn_workflow.py tdd || true'
-              }
-            }
-          }
-        }
-        stage('Generate FDD Docs') {
-          steps {
-            dir('CBN_Workflow_PY') {
-              withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
-                sh 'python3 run_cbn_workflow.py fdd || true'
-              }
-            }
-          }
-        }
-      }
-    }
-  }
 
-  post {
-    success {
-      echo "✅ Pipeline succeeded."
-      archiveArtifacts artifacts: 'CBN_Workflow_PY/output_files/**/*.js', fingerprint: true, onlyIfSuccessful: true
+        stage('Run Workflows') {
+            parallel {
+                stage('Generate C++ Docs') {
+                    steps {
+                        dir('CBN_Workflow_PY') {
+                            withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
+                                sh '''
+                                    if [ -n "$(ls input_files/cpp 2>/dev/null)" ]; then
+                                        python3 run_cbn_workflow.py cpp || true
+                                    else
+                                        echo "⚠ No C++ input files found, skipping..."
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+
+                stage('Generate TDD Docs') {
+                    steps {
+                        dir('CBN_Workflow_PY') {
+                            withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
+                                sh '''
+                                    if [ -n "$(ls input_files/tdd 2>/dev/null)" ]; then
+                                        python3 run_cbn_workflow.py tdd || true
+                                    else
+                                        echo "⚠ No TDD input files found, skipping..."
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+
+                stage('Generate FDD Docs') {
+                    steps {
+                        dir('CBN_Workflow_PY') {
+                            withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
+                                sh '''
+                                    if [ -n "$(ls input_files/fdd 2>/dev/null)" ]; then
+                                        python3 run_cbn_workflow.py fdd || true
+                                    else
+                                        echo "⚠ No FDD input files found, skipping..."
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
-    always {
-      echo "🧹 Cleaning workspace..."
-      cleanWs()
+
+    post {
+        success {
+            echo "✅ Pipeline succeeded."
+            script {
+                if (fileExists('CBN_Workflow_PY/output_files')) {
+                    archiveArtifacts artifacts: 'CBN_Workflow_PY/output_files/**/*.js', fingerprint: true
+                } else {
+                    echo "⚠ No output files to archive"
+                }
+            }
+        }
+
+        always {
+            echo "🧹 Cleaning workspace..."
+            cleanWs()
+        }
+
+        failure {
+            echo "❌ Pipeline failed!"
+        }
     }
-    failure {
-      echo "❌ Pipeline failed!"
-    }
-  }
 }
