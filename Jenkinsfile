@@ -5,7 +5,6 @@ pipeline {
         timestamps()
         ansiColor('xterm')
         disableConcurrentBuilds()
-        timeout(time: 2, unit: 'HOURS')
     }
 
     environment {
@@ -47,12 +46,14 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        def missing = []
+                        def missingFiles = []
                         ['cbn_config.py', 'run_cbn_workflow.py'].each { f ->
-                            if (!fileExists(f)) missing << f
+                            if (!fileExists(f)) {
+                                missingFiles << f
+                            }
                         }
-                        if (missing) {
-                            error "❌ Missing required workflow file(s): ${missing.join(', ')}"
+                        if (missingFiles) {
+                            error "❌ Required workflow file(s) missing: ${missingFiles.join(', ')}"
                         } else {
                             echo "✅ All required workflow scripts exist."
                         }
@@ -70,20 +71,18 @@ pipeline {
                     touch merged.cpp
 
                     files=(
-                        "GridCtrl.h" "GridCtrl.cpp" "CellRange.h"
-                        "GridCell.h" "GridCell.cpp" "GridCellBase.h"
-                        "GridCellBase.cpp" "GridDropTarget.h" "GridDropTarget.cpp"
-                        "InPlaceEdit.h" "InPlaceEdit.cpp"
-                        "MemDC.h" "TitleTip.h" "TitleTip.cpp"
+                        "GridCtrl.h" "GridCtrl.cpp" "CellRange.h" "GridCell.h" "GridCell.cpp"
+                        "GridCellBase.h" "GridCellBase.cpp" "GridDropTarget.h" "GridDropTarget.cpp"
+                        "InPlaceEdit.h" "InPlaceEdit.cpp" "MemDC.h" "TitleTip.h" "TitleTip.cpp"
                     )
 
                     for f in "${files[@]}"; do
-                        if [ -f "../../../source_code/$f" ]; then
-                            cat "../../../source_code/$f" >> merged.cpp
-                        elif [ -f "../../../source_code/GridCtrl/$f" ]; then
-                            cat "../../../source_code/GridCtrl/$f" >> merged.cpp
+                        if [ -f "../../source_code/$f" ]; then
+                            cat "../../source_code/$f" >> merged.cpp
+                        elif [ -f "../../source_code/GridCtrl/$f" ]; then
+                            cat "../../source_code/GridCtrl/$f" >> merged.cpp
                         else
-                            echo "❌ Missing input file: $f" >&2
+                            echo "Missing expected file: $f" >&2
                             exit 1
                         fi
                         echo -e "\\n\\n" >> merged.cpp
@@ -98,10 +97,10 @@ pipeline {
         stage('Run CbN Workflow') {
             steps {
                 dir('CBN_Workflow_PY') {
-                    sh '''
-                        set -euo pipefail
-                        echo "🏃 Running CbN workflow..."
-                        python3 run_cbn_workflow.py cpp
+                    sh '''#!/bin/bash
+                    set -euo pipefail
+                    echo "🏃 Running CbN workflow..."
+                    python3 run_cbn_workflow.py cpp
                     '''
                 }
             }
@@ -110,14 +109,7 @@ pipeline {
         stage('Archive Generated Documents') {
             steps {
                 dir('CBN_Workflow_PY/output_js') {
-                    script {
-                        if (fileExists('.')) {
-                            archiveArtifacts artifacts: '**/*', fingerprint: true, onlyIfSuccessful: true
-                            echo "✅ Documents archived successfully."
-                        } else {
-                            echo "⚠️ No generated documents found to archive."
-                        }
-                    }
+                    archiveArtifacts artifacts: '**', fingerprint: true, allowEmptyArchive: false
                 }
             }
         }
@@ -126,10 +118,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Pipeline succeeded!"
+            echo "✅ Pipeline succeeded."
         }
         failure {
-            echo "❌ Pipeline failed!"
+            echo "❌ Pipeline failed! Check logs for details."
         }
         always {
             echo "🧹 Cleaning workspace..."
