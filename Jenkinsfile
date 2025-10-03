@@ -70,9 +70,9 @@ pipeline {
                         mkdir -p input_files/cpp
                         mkdir -p input_files/tdd
                         mkdir -p input_files/fdd
-                        echo "✅ merged.cpp prepared" > input_files/cpp/merged.cpp
-                        echo "✅ tdd input prepared" > input_files/tdd/tdd_input.txt
-                        echo "✅ fdd input prepared" > input_files/fdd/fdd_input.txt
+                        echo "merged.cpp content" > input_files/cpp/merged.cpp
+                        echo "tdd input" > input_files/tdd/tdd_input.txt
+                        echo "fdd input" > input_files/fdd/fdd_input.txt
                     '''
                 }
             }
@@ -84,9 +84,7 @@ pipeline {
                     steps {
                         dir('CBN_Workflow_PY') {
                             withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                sh '''
-                                    python3 run_cbn_workflow.py cpp || true
-                                '''
+                                sh 'python3 run_cbn_workflow.py cpp || true'
                             }
                         }
                     }
@@ -95,9 +93,7 @@ pipeline {
                     steps {
                         dir('CBN_Workflow_PY') {
                             withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                sh '''
-                                    python3 run_cbn_workflow.py tdd || true
-                                '''
+                                sh 'python3 run_cbn_workflow.py tdd || true'
                             }
                         }
                     }
@@ -106,9 +102,7 @@ pipeline {
                     steps {
                         dir('CBN_Workflow_PY') {
                             withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                sh '''
-                                    python3 run_cbn_workflow.py fdd || true
-                                '''
+                                sh 'python3 run_cbn_workflow.py fdd || true'
                             }
                         }
                     }
@@ -119,12 +113,14 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning workspace..."
-            cleanWs()
+            node { // <- FIX: wrap cleanWs() in a node context
+                echo "🧹 Cleaning workspace..."
+                cleanWs()
+            }
         }
         success {
-            echo "✅ Pipeline succeeded"
-            script {
+            node { // <- wrap in node to archive artifacts
+                echo "✅ Pipeline succeeded"
                 dir('CBN_Workflow_PY') {
                     if (fileExists('output_files')) {
                         archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
