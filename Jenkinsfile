@@ -1,17 +1,15 @@
 pipeline {
     agent any
+    environment {
+        CBN_PASSWORD = credentials('cbn-password')  // example credential
+    }
     options {
         timestamps()
         ansiColor('xterm')
-        timeout(time: 60, unit: 'MINUTES') // Adjust as needed
-    }
-    environment {
-        // Example credential usage
-        CBN_PASSWORD = credentials('cbn-password')
-        PYTHON = 'python3'
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
     stages {
-
         stage('Checkout Repositories') {
             parallel {
                 stage('CbN Workflow Repo') {
@@ -34,8 +32,8 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
-                ${PYTHON} -m pip install --upgrade pip
-                ${PYTHON} -m pip install requests docx reportlab
+                    python3 -m pip install --upgrade pip
+                    python3 -m pip install requests docx reportlab
                 '''
             }
         }
@@ -47,10 +45,9 @@ pipeline {
                         def requiredFiles = ['run_cbn_workflow.py', 'cbn_config.py']
                         def missingFiles = requiredFiles.findAll { !fileExists(it) }
                         if (missingFiles) {
-                            error "❌ Missing workflow scripts: ${missingFiles.join(', ')}"
-                        } else {
-                            echo "✅ All workflow scripts are present."
+                            error "Missing workflow scripts: ${missingFiles.join(', ')}"
                         }
+                        echo "✅ All workflow scripts are present."
                     }
                 }
             }
@@ -69,17 +66,9 @@ pipeline {
                 dir('CBN_Workflow_PY') {
                     script {
                         try {
-                            sh """
-                            ${PYTHON} - <<'EOF'
-import run_cbn_workflow
-try:
-    run_cbn_workflow.main('cpp')  # Replace with actual workflow call
-except Exception as e:
-    print(f"⚠️ Streaming/workflow error: {e}")
-EOF
-                            """
+                            sh 'python3 run_cbn_workflow.py cpp'
                         } catch (err) {
-                            echo "⚠️ Workflow script encountered errors: ${err}"
+                            echo "⚠️ Workflow execution encountered an error: ${err}"
                             currentBuild.result = 'UNSTABLE'
                         }
                     }
@@ -91,12 +80,11 @@ EOF
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        def artifactDir = 'output_js'
-                        if (fileExists(artifactDir) && sh(script: "ls ${artifactDir}", returnStatus: true) == 0) {
-                            echo "📦 Archiving artifacts from ${artifactDir}..."
-                            archiveArtifacts artifacts: "${artifactDir}/**", allowEmptyArchive: true
+                        def outputExists = fileExists('output_js')
+                        if (outputExists) {
+                            archiveArtifacts artifacts: 'output_js/**', allowEmptyArchive: false
                         } else {
-                            echo "⚠️ No artifacts found in ${artifactDir}. Skipping archiving."
+                            echo "⚠️ No output artifacts found to archive."
                         }
                     }
                 }
@@ -106,10 +94,8 @@ EOF
 
     post {
         always {
-            node {
-                echo "🧹 Cleaning workspace..."
-                cleanWs()
-            }
+            echo "🧹 Cleaning workspace..."
+            cleanWs()
         }
         success {
             echo "✅ Pipeline completed successfully."
