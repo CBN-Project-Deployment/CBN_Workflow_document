@@ -1,7 +1,7 @@
 pipeline {
     agent any
     environment {
-        CBN_PASSWORD = credentials('cbn-password')  // example credential
+        CBN_PASSWORD = credentials('cbn-password')
     }
     options {
         timestamps()
@@ -80,8 +80,7 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        def outputExists = fileExists('output_js')
-                        if (outputExists) {
+                        if (fileExists('output_js')) {
                             archiveArtifacts artifacts: 'output_js/**', allowEmptyArchive: false
                         } else {
                             echo "⚠️ No output artifacts found to archive."
@@ -94,8 +93,11 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning workspace..."
-            cleanWs()
+            // Ensure cleanWs() is run inside a node context
+            node {
+                echo "🧹 Cleaning workspace..."
+                cleanWs()
+            }
         }
         success {
             echo "✅ Pipeline completed successfully."
