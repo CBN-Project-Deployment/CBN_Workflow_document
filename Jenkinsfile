@@ -11,6 +11,7 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout SCM') {
             steps {
                 checkout([$class: 'GitSCM',
@@ -50,10 +51,12 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        if (!fileExists('run_cbn_workflow.py') || !fileExists('cbn_config.py')) {
-                            error "❌ Required Python files are missing!"
+                        def requiredFiles = ['run_cbn_workflow.py', 'cbn_config.py']
+                        def missing = requiredFiles.findAll { !fileExists(it) }
+                        if (missing) {
+                            error "❌ Missing required files: ${missing.join(', ')}"
                         }
-                        echo "✅ All required .py files exist"
+                        echo "✅ All required Python files exist"
                     }
                 }
             }
@@ -74,29 +77,50 @@ pipeline {
 
         stage('Run Workflows') {
             parallel {
+
                 stage('Generate C++ Docs') {
                     steps {
                         dir('CBN_Workflow_PY') {
                             withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                sh 'python3 run_cbn_workflow.py cpp || true'
+                                script {
+                                    echo "➡️ Running C++ workflow..."
+                                    def status = sh(script: 'python3 run_cbn_workflow.py cpp', returnStatus: true)
+                                    if (status != 0) {
+                                        echo "⚠️ C++ workflow failed (exit code ${status})"
+                                    }
+                                }
                             }
                         }
                     }
                 }
+
                 stage('Generate TDD Docs') {
                     steps {
                         dir('CBN_Workflow_PY') {
                             withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                sh 'python3 run_cbn_workflow.py tdd || true'
+                                script {
+                                    echo "➡️ Running TDD workflow..."
+                                    def status = sh(script: 'python3 run_cbn_workflow.py tdd', returnStatus: true)
+                                    if (status != 0) {
+                                        echo "⚠️ TDD workflow failed (exit code ${status})"
+                                    }
+                                }
                             }
                         }
                     }
                 }
+
                 stage('Generate FDD Docs') {
                     steps {
                         dir('CBN_Workflow_PY') {
                             withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                sh 'python3 run_cbn_workflow.py fdd || true'
+                                script {
+                                    echo "➡️ Running FDD workflow..."
+                                    def status = sh(script: 'python3 run_cbn_workflow.py fdd', returnStatus: true)
+                                    if (status != 0) {
+                                        echo "⚠️ FDD workflow failed (exit code ${status})"
+                                    }
+                                }
                             }
                         }
                     }
@@ -107,17 +131,16 @@ pipeline {
 
     post {
         always {
-            // wrap cleanWs inside a node to guarantee workspace context
-            node {
+            script {
                 echo "🧹 Cleaning workspace..."
                 cleanWs()
             }
         }
         success {
-            // archive artifacts safely
-            node {
+            script {
                 dir('CBN_Workflow_PY') {
                     if (fileExists('output_files')) {
+                        echo "📦 Archiving generated artifacts..."
                         archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
                     } else {
                         echo "⚠️ No output files to archive"
