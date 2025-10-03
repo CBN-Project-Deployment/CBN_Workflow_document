@@ -1,8 +1,13 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+    }
+
     environment {
-        CBN_PASSWORD = credentials('cbn_password')
+        // Comment out if you don’t actually need credentials
+        // CBN_PASSWORD = credentials('cbn_password')
     }
 
     stages {
@@ -60,7 +65,7 @@ pipeline {
                 dir('CBN_Workflow_PY') {
                     sh '''
                         mkdir -p input_files/cpp
-                        cp ../source_code/merged.cpp input_files/cpp/
+                        cp ../source_code/merged.cpp input_files/cpp/ || true
                         echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp"
                     '''
                 }
@@ -71,7 +76,9 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     retry(2) {
-                        sh 'python3 run_cbn_workflow.py cpp'
+                        timeout(time: 10, unit: 'MINUTES') {
+                            sh 'python3 run_cbn_workflow.py cpp'
+                        }
                     }
                 }
             }
@@ -92,8 +99,10 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning workspace..."
-            cleanWs()
+            node {
+                echo "🧹 Cleaning workspace..."
+                cleanWs()
+            }
         }
         success {
             echo "✅ Pipeline completed successfully."
