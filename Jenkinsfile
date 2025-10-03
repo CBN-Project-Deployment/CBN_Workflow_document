@@ -1,15 +1,18 @@
 pipeline {
     agent any
 
+    environment {
+        // Securely inject password into environment
+        CBN_PASSWORD = credentials('cbn_password')
+    }
+
     options {
-        skipDefaultCheckout(true)
-        timestamps()
         ansiColor('xterm')
-        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     stages {
-
         stage('Checkout SCM') {
             steps {
                 checkout scm
@@ -21,14 +24,14 @@ pipeline {
                 stage('CbN Workflow Repo') {
                     steps {
                         dir('CBN_Workflow_PY') {
-                            git branch: 'main', url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git'
+                            git url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git', branch: 'main'
                         }
                     }
                 }
                 stage('Source Application Code') {
                     steps {
                         dir('source_code') {
-                            git branch: 'master', url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git'
+                            git url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git', branch: 'master'
                         }
                     }
                 }
@@ -48,11 +51,10 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        if (fileExists('run_cbn_workflow.py')) {
-                            echo "✅ All workflow scripts are present."
-                        } else {
-                            error "❌ Missing run_cbn_workflow.py"
+                        if (!fileExists('run_cbn_workflow.py') || !fileExists('cbn_config.py')) {
+                            error "❌ Missing workflow scripts!"
                         }
+                        echo "✅ All workflow scripts are present."
                     }
                 }
             }
@@ -63,8 +65,14 @@ pipeline {
                 dir('CBN_Workflow_PY') {
                     sh '''
                         mkdir -p input_files/cpp
-                        cp ../source_code/merged.cpp input_files/cpp/ || true
-                        echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp"
+                        # Merge or copy .cpp files from source_code
+                        if ls ../source_code/*.cpp >/dev/null 2>&1; then
+                            cat ../source_code/*.cpp > input_files/cpp/merged.cpp
+                            echo "✅ merged.cpp created from source_code"
+                        else
+                            echo "⚠️ No .cpp files found in source_code, using placeholder."
+                            echo "// empty merged.cpp" > input_files/cpp/merged.cpp
+                        fi
                     '''
                 }
             }
@@ -85,11 +93,7 @@ pipeline {
         stage('Archive Generated Documents') {
             steps {
                 script {
-                    if (fileExists('CBN_Workflow_PY/generated_docs')) {
-                        archiveArtifacts artifacts: 'CBN_Workflow_PY/generated_docs/**', fingerprint: true
-                    } else {
-                        echo "⚠️ No generated documents found to archive."
-                    }
+                    archiveArtifacts artifacts: 'CBN_Workflow_PY/output_js/**, CBN_Workflow_PY/output_docs/**', allowEmptyArchive: true
                 }
             }
         }
@@ -100,11 +104,11 @@ pipeline {
             echo "🧹 Cleaning workspace..."
             cleanWs()
         }
-        success {
-            echo "✅ Pipeline completed successfully."
-        }
         failure {
             echo "❌ Pipeline failed. Check logs for details."
+        }
+        success {
+            echo "✅ Pipeline finished successfully!"
         }
     }
 }
