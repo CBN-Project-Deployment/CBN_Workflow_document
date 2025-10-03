@@ -1,18 +1,20 @@
 pipeline {
     agent any
 
+    options {
+        timestamps()
+        ansiColor('xterm')
+        disableConcurrentBuilds()
+        timeout(time: 2, unit: 'HOURS')
+    }
+
     environment {
         PYTHON = 'python3'
         CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
     }
 
-    options {
-        timestamps()
-        ansiColor('xterm')
-        timeout(time: 2, unit: 'HOURS')
-    }
-
     stages {
+
         stage('Checkout Repositories') {
             parallel {
                 stage('CbN Workflow Repo') {
@@ -34,10 +36,10 @@ pipeline {
 
         stage('Install Python Dependencies') {
             steps {
-                sh """
-                    ${PYTHON} -m pip install --upgrade pip
-                    ${PYTHON} -m pip install requests docx reportlab
-                """
+                sh '''
+                    python3 -m pip install --upgrade pip
+                    python3 -m pip install requests docx reportlab
+                '''
             }
         }
 
@@ -45,12 +47,14 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        def requiredFiles = ['run_cbn_workflow.py', 'cbn_config.py']
-                        def missingFiles = requiredFiles.findAll { !fileExists(it) }
-                        if (missingFiles) {
-                            error "Missing workflow scripts: ${missingFiles.join(', ')}"
+                        def missing = []
+                        ['cbn_config.py', 'run_cbn_workflow.py'].each { f ->
+                            if (!fileExists(f)) missing << f
+                        }
+                        if (missing) {
+                            error "❌ Missing required workflow file(s): ${missing.join(', ')}"
                         } else {
-                            echo "✅ All workflow scripts are present."
+                            echo "✅ All required workflow scripts exist."
                         }
                     }
                 }
@@ -60,7 +64,33 @@ pipeline {
         stage('Prepare Input Files') {
             steps {
                 dir('CBN_Workflow_PY/input_files/cpp') {
-                    sh 'echo "merged.cpp prepared"'
+                    sh '''#!/bin/bash
+                    set -euo pipefail
+                    mkdir -p .
+                    touch merged.cpp
+
+                    files=(
+                        "GridCtrl.h" "GridCtrl.cpp" "CellRange.h"
+                        "GridCell.h" "GridCell.cpp" "GridCellBase.h"
+                        "GridCellBase.cpp" "GridDropTarget.h" "GridDropTarget.cpp"
+                        "InPlaceEdit.h" "InPlaceEdit.cpp"
+                        "MemDC.h" "TitleTip.h" "TitleTip.cpp"
+                    )
+
+                    for f in "${files[@]}"; do
+                        if [ -f "../../../source_code/$f" ]; then
+                            cat "../../../source_code/$f" >> merged.cpp
+                        elif [ -f "../../../source_code/GridCtrl/$f" ]; then
+                            cat "../../../source_code/GridCtrl/$f" >> merged.cpp
+                        else
+                            echo "❌ Missing input file: $f" >&2
+                            exit 1
+                        fi
+                        echo -e "\\n\\n" >> merged.cpp
+                    done
+
+                    echo "✅ merged.cpp prepared"
+                    '''
                 }
             }
         }
@@ -68,15 +98,11 @@ pipeline {
         stage('Run CbN Workflow') {
             steps {
                 dir('CBN_Workflow_PY') {
-                    script {
-                        try {
-                            sh """
-                                ${PYTHON} run_cbn_workflow.py cpp || true
-                            """
-                        } catch (err) {
-                            echo "⚠️ Workflow execution had issues but continuing to archive outputs."
-                        }
-                    }
+                    sh '''
+                        set -euo pipefail
+                        echo "🏃 Running CbN workflow..."
+                        python3 run_cbn_workflow.py cpp
+                    '''
                 }
             }
         }
@@ -84,25 +110,30 @@ pipeline {
         stage('Archive Generated Documents') {
             steps {
                 dir('CBN_Workflow_PY/output_js') {
-                    archiveArtifacts artifacts: '**', allowEmptyArchive: true
+                    script {
+                        if (fileExists('.')) {
+                            archiveArtifacts artifacts: '**/*', fingerprint: true, onlyIfSuccessful: true
+                            echo "✅ Documents archived successfully."
+                        } else {
+                            echo "⚠️ No generated documents found to archive."
+                        }
+                    }
                 }
             }
         }
+
     }
 
     post {
+        success {
+            echo "✅ Pipeline succeeded!"
+        }
+        failure {
+            echo "❌ Pipeline failed!"
+        }
         always {
             echo "🧹 Cleaning workspace..."
             cleanWs()
-        }
-        success {
-            echo "✅ Pipeline completed successfully."
-        }
-        failure {
-            echo "❌ Pipeline failed! Check logs for details."
-        }
-        unstable {
-            echo "⚠️ Pipeline finished with warnings."
         }
     }
 }
