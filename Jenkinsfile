@@ -3,11 +3,9 @@ pipeline {
 
     options {
         skipDefaultCheckout(true)
-    }
-
-    environment {
-        // Comment out if you don’t actually need credentials
-        // CBN_PASSWORD = credentials('cbn_password')
+        timestamps()
+        ansiColor('xterm')
+        disableConcurrentBuilds()
     }
 
     stages {
@@ -99,10 +97,8 @@ pipeline {
 
     post {
         always {
-            node {
-                echo "🧹 Cleaning workspace..."
-                cleanWs()
-            }
+            echo "🧹 Cleaning workspace..."
+            cleanWs()
         }
         success {
             echo "✅ Pipeline completed successfully."
