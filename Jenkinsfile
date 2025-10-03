@@ -63,8 +63,8 @@ pipeline {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
-          mkdir -p input_files/cpp
-          : > input_files/cpp/merged.cpp
+          mkdir -p CBN_Workflow_PY/input_files/cpp
+          : > CBN_Workflow_PY/input_files/cpp/merged.cpp
 
           files=(
             "GridCtrl.h"
@@ -85,26 +85,48 @@ pipeline {
 
           for f in "${files[@]}"; do
             if [ -f "source_code/$f" ]; then
-              cat "source_code/$f" >> input_files/cpp/merged.cpp
+              cat "source_code/$f" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
             elif [ -f "source_code/GridCtrl/$f" ]; then
-              cat "source_code/GridCtrl/$f" >> input_files/cpp/merged.cpp
+              cat "source_code/GridCtrl/$f" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
             else
               echo "❌ Missing expected file: $f" >&2
               exit 1
             fi
-            echo -e "\\n\\n" >> input_files/cpp/merged.cpp
+            echo -e "\\n\\n" >> CBN_Workflow_PY/input_files/cpp/merged.cpp
           done
 
-          echo "✅ merged.cpp prepared"
+          echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp/"
         '''
       }
     }
 
-    stage('Run CbN Workflow') {
-      steps {
-        dir('CBN_Workflow_PY') {
-          withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
-            sh 'python3 run_cbn_workflow.py cpp'
+    stage('Run Workflows') {
+      parallel {
+        stage('Generate C++ Docs') {
+          steps {
+            dir('CBN_Workflow_PY') {
+              withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
+                sh 'python3 run_cbn_workflow.py cpp'
+              }
+            }
+          }
+        }
+        stage('Generate TDD Docs') {
+          steps {
+            dir('CBN_Workflow_PY') {
+              withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
+                sh 'python3 run_cbn_workflow.py tdd || true'
+              }
+            }
+          }
+        }
+        stage('Generate FDD Docs') {
+          steps {
+            dir('CBN_Workflow_PY') {
+              withCredentials([string(credentialsId: 'CBN_PASSWORD_CREDENTIAL_ID', variable: 'CBN_PASSWORD')]) {
+                sh 'python3 run_cbn_workflow.py fdd || true'
+              }
+            }
           }
         }
       }
@@ -114,7 +136,7 @@ pipeline {
   post {
     success {
       echo "✅ Pipeline succeeded."
-      archiveArtifacts artifacts: 'CBN_Workflow_PY/output_files/cpp/*.js', fingerprint: true, onlyIfSuccessful: true
+      archiveArtifacts artifacts: 'CBN_Workflow_PY/output_files/**/*.js', fingerprint: true, onlyIfSuccessful: true
     }
     always {
       echo "🧹 Cleaning workspace..."
