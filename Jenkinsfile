@@ -67,9 +67,7 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     sh '''
-                        mkdir -p input_files/cpp
-                        mkdir -p input_files/tdd
-                        mkdir -p input_files/fdd
+                        mkdir -p input_files/cpp input_files/tdd input_files/fdd
                         echo "merged.cpp content" > input_files/cpp/merged.cpp
                         echo "tdd input" > input_files/tdd/tdd_input.txt
                         echo "fdd input" > input_files/fdd/fdd_input.txt
@@ -113,15 +111,13 @@ pipeline {
 
     post {
         always {
-            node { // <- FIX: wrap cleanWs() in a node context
-                echo "🧹 Cleaning workspace..."
-                cleanWs()
-            }
+            echo "🧹 Cleaning workspace..."
+            cleanWs()
         }
         success {
-            node { // <- wrap in node to archive artifacts
-                echo "✅ Pipeline succeeded"
-                dir('CBN_Workflow_PY') {
+            echo "✅ Pipeline succeeded"
+            dir('CBN_Workflow_PY') {
+                script {
                     if (fileExists('output_files')) {
                         archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
                     } else {
