@@ -107,15 +107,15 @@ pipeline {
 
     post {
         always {
-            script {
+            // wrap cleanWs inside a node to guarantee workspace context
+            node {
                 echo "🧹 Cleaning workspace..."
-                // This runs inside the agent node
                 cleanWs()
             }
         }
         success {
-            script {
-                echo "✅ Pipeline succeeded"
+            // archive artifacts safely
+            node {
                 dir('CBN_Workflow_PY') {
                     if (fileExists('output_files')) {
                         archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
