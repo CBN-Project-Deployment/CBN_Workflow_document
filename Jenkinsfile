@@ -1,14 +1,14 @@
 pipeline {
-    agent any  // Ensures workspace context is available for all steps
+    agent any  // ensures workspace context for all steps
 
     environment {
-        CBN_PASSWORD = credentials('cbn-password') // securely access password
+        CBN_PASSWORD = credentials('cbn-password') // secure password usage
     }
 
     options {
         timestamps()
         ansiColor('xterm')
-        timeout(time: 60, unit: 'MINUTES') // prevent runaway jobs
+        timeout(time: 60, unit: 'MINUTES')
     }
 
     stages {
@@ -99,20 +99,27 @@ pipeline {
         }
 
         stage('Archive Artifacts') {
-            when {
-                expression { fileExists('output_files') }
-            }
             steps {
-                echo "📦 Archiving generated artifacts..."
-                archiveArtifacts artifacts: 'output_files/**', allowEmptyArchive: true
+                script {
+                    // Only archive if directory exists
+                    if (fileExists('output_files')) {
+                        echo "📦 Archiving generated artifacts..."
+                        archiveArtifacts artifacts: 'output_files/**', allowEmptyArchive: true
+                    } else {
+                        echo "⚠️ No artifacts to archive."
+                    }
+                }
             }
         }
     }
 
     post {
         always {
-            echo "🧹 Cleaning workspace..."
-            cleanWs() // safe because top-level agent is defined
+            // Wrap cleanWs in a node block to avoid MissingContextVariableException
+            node {
+                echo "🧹 Cleaning workspace..."
+                cleanWs()
+            }
         }
         success {
             echo "✅ Pipeline completed successfully!"
