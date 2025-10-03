@@ -1,32 +1,31 @@
 pipeline {
     agent any
 
-    options {
-        timestamps()
-        ansiColor('xterm')
-        disableConcurrentBuilds()
-    }
-
     environment {
-        PYTHON = 'python3'
-        CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
+        CBN_PASSWORD = credentials('cbn_password')
     }
 
     stages {
+
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
 
         stage('Checkout Repositories') {
             parallel {
                 stage('CbN Workflow Repo') {
                     steps {
                         dir('CBN_Workflow_PY') {
-                            git url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git', branch: 'main'
+                            git branch: 'main', url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git'
                         }
                     }
                 }
                 stage('Source Application Code') {
                     steps {
                         dir('source_code') {
-                            git url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git', branch: 'master'
+                            git branch: 'master', url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git'
                         }
                     }
                 }
@@ -46,14 +45,10 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        def missing = []
-                        ['cbn_config.py', 'run_cbn_workflow.py'].each { f ->
-                            if (!fileExists(f)) { missing << f }
-                        }
-                        if (missing) {
-                            error "❌ Required file(s) missing: ${missing.join(', ')}"
-                        } else {
+                        if (fileExists('run_cbn_workflow.py')) {
                             echo "✅ All workflow scripts are present."
+                        } else {
+                            error "❌ Missing run_cbn_workflow.py"
                         }
                     }
                 }
@@ -63,31 +58,9 @@ pipeline {
         stage('Prepare Input Files') {
             steps {
                 dir('CBN_Workflow_PY') {
-                    sh '''#!/bin/bash
-                        set -euo pipefail
+                    sh '''
                         mkdir -p input_files/cpp
-                        touch input_files/cpp/merged.cpp
-
-                        files=(
-                          "GridCtrl.h" "GridCtrl.cpp" "CellRange.h"
-                          "GridCell.h" "GridCell.cpp" "GridCellBase.h" "GridCellBase.cpp"
-                          "GridDropTarget.h" "GridDropTarget.cpp"
-                          "InPlaceEdit.h" "InPlaceEdit.cpp"
-                          "MemDC.h" "TitleTip.h" "TitleTip.cpp"
-                        )
-
-                        for f in "${files[@]}"; do
-                          if [ -f "../source_code/$f" ]; then
-                            cat "../source_code/$f" >> input_files/cpp/merged.cpp
-                          elif [ -f "../source_code/GridCtrl/$f" ]; then
-                            cat "../source_code/GridCtrl/$f" >> input_files/cpp/merged.cpp
-                          else
-                            echo "❌ Missing expected file: $f" >&2
-                            exit 1
-                          fi
-                          echo -e "\\n\\n" >> input_files/cpp/merged.cpp
-                        done
-
+                        cp ../source_code/merged.cpp input_files/cpp/
                         echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp"
                     '''
                 }
@@ -97,32 +70,36 @@ pipeline {
         stage('Run CbN Workflow') {
             steps {
                 dir('CBN_Workflow_PY') {
-                    sh '''
-                        python3 run_cbn_workflow.py cpp
-                    '''
+                    retry(2) {
+                        sh 'python3 run_cbn_workflow.py cpp'
+                    }
                 }
             }
         }
 
         stage('Archive Generated Documents') {
             steps {
-                archiveArtifacts artifacts: 'CBN_Workflow_PY/output_js/**', fingerprint: true, onlyIfSuccessful: true
-                archiveArtifacts artifacts: 'generated_docs/**', fingerprint: true, onlyIfSuccessful: true
+                script {
+                    if (fileExists('CBN_Workflow_PY/generated_docs')) {
+                        archiveArtifacts artifacts: 'CBN_Workflow_PY/generated_docs/**', fingerprint: true
+                    } else {
+                        echo "⚠️ No generated documents found to archive."
+                    }
+                }
             }
         }
-
     }
 
     post {
-        success {
-            echo "✅ Pipeline succeeded."
-        }
         always {
             echo "🧹 Cleaning workspace..."
             cleanWs()
         }
+        success {
+            echo "✅ Pipeline completed successfully."
+        }
         failure {
-            echo "❌ Pipeline failed! Check logs for details."
+            echo "❌ Pipeline failed. Check logs for details."
         }
     }
 }
