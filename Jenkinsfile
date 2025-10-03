@@ -1,18 +1,17 @@
 pipeline {
     agent any
 
-    environment {
-        CBN_PASSWORD = credentials('cbn-password')  // Replace with your Jenkins credential ID
-        PYTHON_BIN = "python3"
+      environment {
+        PYTHON = 'python3'
+        CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
     }
-
     options {
         timestamps()
         ansiColor('xterm')
+        timeout(time: 2, unit: 'HOURS') // adjust as needed
     }
 
     stages {
-
         stage('Checkout Repositories') {
             parallel {
                 stage('CbN Workflow Repo') {
@@ -98,8 +97,10 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning workspace..."
-            cleanWs()
+            node { // ✅ Wrap cleanWs in node to avoid MissingContextVariableException
+                echo "🧹 Cleaning workspace..."
+                cleanWs()
+            }
         }
         success {
             echo "✅ Pipeline completed successfully."
