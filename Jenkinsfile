@@ -1,131 +1,228 @@
 pipeline {
-    agent any  // ensures workspace context for all steps
 
-    environment {
-        CBN_PASSWORD = credentials('cbn-password') // secure password usage
-    }
-
+    agent any
+ 
     options {
+
         timestamps()
+
         ansiColor('xterm')
-        timeout(time: 60, unit: 'MINUTES')
-    }
 
+        disableConcurrentBuilds()
+
+    }
+ 
+    environment {
+
+        PYTHON = 'python3'
+
+        CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
+
+    }
+ 
     stages {
+ 
+        stage('Checkout Repositories') {
 
-        stage('Checkout SCM') {
-            steps {
-                echo "🔄 Checking out main repository..."
-                checkout([$class: 'GitSCM',
-                          branches: [[name: '*/main']],
-                          userRemoteConfigs: [[url: 'https://github.com/CBN-Project-Deployment/CBN_Workflow_document.git']]])
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                echo "📦 Installing Python dependencies..."
-                sh '''
-                    python3 -m pip install --upgrade pip --user
-                    python3 -m pip install requests --user
-                '''
-            }
-        }
-
-        stage('Verify Required Files') {
-            steps {
-                script {
-                    def requiredFiles = ['cbn_config.py', 'workflow_runner.py']
-                    for (file in requiredFiles) {
-                        if (!fileExists(file)) {
-                            error "❌ Required file ${file} not found!"
-                        }
-                    }
-                    echo "✅ All required files exist"
-                }
-            }
-        }
-
-        stage('Prepare Input Files') {
-            steps {
-                sh '''
-                    mkdir -p input_files
-                    echo "C++ input" > input_files/cpp.txt
-                    echo "TDD input" > input_files/tdd.txt
-                    echo "FDD input" > input_files/fdd.txt
-                '''
-            }
-        }
-
-        stage('Run Workflows in Parallel') {
             parallel {
-                stage('C++ Workflow') {
-                    steps {
-                        script {
-                            try {
-                                sh 'python3 workflow_runner.py --type cpp --input input_files/cpp.txt'
-                            } catch (err) {
-                                echo "⚠️ C++ Workflow failed: ${err}"
-                                currentBuild.result = 'FAILURE'
-                            }
-                        }
-                    }
-                }
-                stage('TDD Workflow') {
-                    steps {
-                        script {
-                            try {
-                                sh 'python3 workflow_runner.py --type tdd --input input_files/tdd.txt'
-                            } catch (err) {
-                                echo "⚠️ TDD Workflow failed: ${err}"
-                                currentBuild.result = 'FAILURE'
-                            }
-                        }
-                    }
-                }
-                stage('FDD Workflow') {
-                    steps {
-                        script {
-                            try {
-                                sh 'python3 workflow_runner.py --type fdd --input input_files/fdd.txt'
-                            } catch (err) {
-                                echo "⚠️ FDD Workflow failed: ${err}"
-                                currentBuild.result = 'FAILURE'
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
-        stage('Archive Artifacts') {
+                stage('CbN Workflow Repo') {
+
+                    steps {
+
+                        dir('CBN_Workflow_PY') {
+
+                            git url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git', branch: 'main'
+
+                        }
+
+                    }
+
+                }
+
+                stage('Source Application Code') {
+
+                    steps {
+
+                        dir('source_code') {
+
+                            git url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git', branch: 'master'
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+ 
+        stage('Install Dependencies') {
+
             steps {
-                script {
-                    // Only archive if directory exists
-                    if (fileExists('output_files')) {
-                        echo "📦 Archiving generated artifacts..."
-                        archiveArtifacts artifacts: 'output_files/**', allowEmptyArchive: true
-                    } else {
-                        echo "⚠️ No artifacts to archive."
-                    }
-                }
+
+                sh '''
+
+                    python3 -m pip install --upgrade pip
+
+                    python3 -m pip install requests docx reportlab
+
+                '''
+
             }
+
         }
+ 
+        stage('Verify Workflow Scripts') {
+
+            steps {
+
+                dir('CBN_Workflow_PY') {
+
+                    script {
+
+                        def missing = []
+
+                        ['cbn_config.py', 'run_cbn_workflow.py'].each { f ->
+
+                            if (!fileExists(f)) { missing << f }
+
+                        }
+
+                        if (missing) {
+
+                            error "❌ Required file(s) missing: ${missing.join(', ')}"
+
+                        } else {
+
+                            echo "✅ All workflow scripts are present."
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+ 
+        stage('Prepare Input Files') {
+
+            steps {
+
+                dir('CBN_Workflow_PY') {
+
+                    sh '''#!/bin/bash
+
+                        set -euo pipefail
+
+                        mkdir -p input_files/cpp
+
+                        touch input_files/cpp/merged.cpp
+ 
+                        files=(
+
+                          "GridCtrl.h" "GridCtrl.cpp" "CellRange.h"
+
+                          "GridCell.h" "GridCell.cpp" "GridCellBase.h" "GridCellBase.cpp"
+
+                          "GridDropTarget.h" "GridDropTarget.cpp"
+
+                          "InPlaceEdit.h" "InPlaceEdit.cpp"
+
+                          "MemDC.h" "TitleTip.h" "TitleTip.cpp"
+
+                        )
+ 
+                        for f in "${files[@]}"; do
+
+                          if [ -f "../source_code/$f" ]; then
+
+                            cat "../source_code/$f" >> input_files/cpp/merged.cpp
+
+                          elif [ -f "../source_code/GridCtrl/$f" ]; then
+
+                            cat "../source_code/GridCtrl/$f" >> input_files/cpp/merged.cpp
+
+                          else
+
+                            echo "❌ Missing expected file: $f" >&2
+
+                            exit 1
+
+                          fi
+
+                          echo -e "\\n\\n" >> input_files/cpp/merged.cpp
+
+                        done
+ 
+                        echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp"
+
+                    '''
+
+                }
+
+            }
+
+        }
+ 
+        stage('Run CbN Workflow') {
+
+            steps {
+
+                dir('CBN_Workflow_PY') {
+
+                    sh '''
+
+                        python3 run_cbn_workflow.py cpp
+
+                    '''
+
+                }
+
+            }
+
+        }
+ 
+        stage('Archive Generated Documents') {
+
+            steps {
+
+                archiveArtifacts artifacts: 'CBN_Workflow_PY/output_js/**', fingerprint: true, onlyIfSuccessful: true
+
+                archiveArtifacts artifacts: 'generated_docs/**', fingerprint: true, onlyIfSuccessful: true
+
+            }
+
+        }
+ 
+    }
+ 
+    post {
+
+        success {
+
+            echo "✅ Pipeline succeeded."
+
+        }
+
+        always {
+
+            echo "🧹 Cleaning workspace..."
+
+            cleanWs()
+
+        }
+
+        failure {
+
+            echo "❌ Pipeline failed! Check logs for details."
+
+        }
+
     }
 
-    post {
-        always {
-            // Wrap cleanWs in a node block to avoid MissingContextVariableException
-            node {
-                echo "🧹 Cleaning workspace..."
-                cleanWs()
-            }
-        }
-        success {
-            echo "✅ Pipeline completed successfully!"
-        }
-        failure {
-            echo "❌ Pipeline failed!"
-        }
-    }
 }
+ 
