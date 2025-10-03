@@ -125,23 +125,17 @@ pipeline {
 
     post {
         always {
-            node {
-                script {
-                    echo "🧹 Cleaning workspace..."
-                    cleanWs()
-                }
-            }
+            echo "🧹 Cleaning workspace..."
+            cleanWs()
         }
         success {
-            node {
-                dir('CBN_Workflow_PY') {
-                    script {
-                        if (fileExists('output_files')) {
-                            echo "📦 Archiving generated artifacts..."
-                            archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
-                        } else {
-                            echo "⚠️ No output files to archive"
-                        }
+            dir('CBN_Workflow_PY') {
+                script {
+                    if (fileExists('output_files')) {
+                        echo "📦 Archiving generated artifacts..."
+                        archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
+                    } else {
+                        echo "⚠️ No output files to archive"
                     }
                 }
             }
