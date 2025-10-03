@@ -11,7 +11,6 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout SCM') {
             steps {
                 checkout([$class: 'GitSCM',
@@ -51,11 +50,8 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     script {
-                        if (!fileExists('run_cbn_workflow.py')) {
-                            error "❌ run_cbn_workflow.py is missing!"
-                        }
-                        if (!fileExists('cbn_config.py')) {
-                            error "❌ cbn_config.py is missing!"
+                        if (!fileExists('run_cbn_workflow.py') || !fileExists('cbn_config.py')) {
+                            error "❌ Required Python files are missing!"
                         }
                         echo "✅ All required .py files exist"
                     }
@@ -111,13 +107,16 @@ pipeline {
 
     post {
         always {
-            echo "🧹 Cleaning workspace..."
-            cleanWs()
+            script {
+                echo "🧹 Cleaning workspace..."
+                // This runs inside the agent node
+                cleanWs()
+            }
         }
         success {
-            echo "✅ Pipeline succeeded"
-            dir('CBN_Workflow_PY') {
-                script {
+            script {
+                echo "✅ Pipeline succeeded"
+                dir('CBN_Workflow_PY') {
                     if (fileExists('output_files')) {
                         archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
                     } else {
