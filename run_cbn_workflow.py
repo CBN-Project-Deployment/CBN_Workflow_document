@@ -9,13 +9,14 @@ pipeline {
 
     environment {
         PYTHON = 'python3'
-        CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
+        CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID') // Jenkins credential
         OUTPUT_DIR = "generated_output"
         REACT_REPO = "git@github.com:Mrityunjai-demo/React-Dep.git"
         REACT_BRANCH = "main"
     }
 
     stages {
+
         stage('Checkout C++ Source Code') {
             steps {
                 dir('source_code') {
@@ -27,7 +28,7 @@ pipeline {
         stage('Checkout CbN Workflow Repo') {
             steps {
                 dir('CBN_Workflow_PY') {
-                    git branch: 'main', url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git'
+                    git branch: 'main', url: 'https://github.com/CBN-Project-Deployment/CBN_Workflow_document.git'
                 }
             }
         }
@@ -126,7 +127,7 @@ pipeline {
             echo "✅ Pipeline completed successfully. Documents + ReactJS code generated."
         }
         failure {
-            echo "❌ Pipeline failed. Check logs."
+            echo "❌ Pipeline failed. Check logs for errors."
         }
         always {
             echo "🧹 Cleaning workspace..."
