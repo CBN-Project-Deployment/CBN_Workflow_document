@@ -93,49 +93,30 @@ pipeline {
             }
         }
 
-        stage('Run CbN Workflows - Generate Documents') {
+        stage('Run CbN Workflow') {
             steps {
                 dir('CBN_Workflow_PY') {
                     sh """
                       mkdir -p ../${OUTPUT_DIR}
-                      ${PYTHON} run_cbn_workflow.py tdd --output ../${OUTPUT_DIR}/TDD.docx
-                      ${PYTHON} run_cbn_workflow.py fdd --output ../${OUTPUT_DIR}/FDD.docx
+                      ${PYTHON} run_cbn_workflow.py cpp --input ../input_files/cpp/merged.cpp --output ../${OUTPUT_DIR}
                     """
                 }
             }
         }
 
-        stage('Archive Documents') {
+        stage('Archive Generated Documents') {
             steps {
-                archiveArtifacts artifacts: "${OUTPUT_DIR}/*.docx", fingerprint: true
+                archiveArtifacts artifacts: "${OUTPUT_DIR}/*", fingerprint: true
             }
         }
-
-        // Optional: Push generated React code if CbN workflow produces it
-        /*
-        stage('Push Generated React Code') {
-            steps {
-                dir("${OUTPUT_DIR}/react") {
-                    sh '''
-                      git init
-                      git remote add origin <REACT_REPO_URL>
-                      git checkout -B main
-                      git add .
-                      git commit -m "Auto-generated React code from CbN workflow"
-                      git push origin main --force
-                    '''
-                }
-            }
-        }
-        */
     }
 
     post {
         success {
-            echo "✅ CbN Workflow documents generated successfully."
+            echo "✅ Pipeline completed successfully. Documents generated."
         }
         failure {
-            echo "❌ Pipeline failed. Check the logs for details."
+            echo "❌ Pipeline failed. Check logs for details."
         }
         always {
             echo "🧹 Cleaning workspace..."
