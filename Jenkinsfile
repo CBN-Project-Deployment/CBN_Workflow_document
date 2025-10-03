@@ -1,14 +1,15 @@
 pipeline {
     agent any
 
-      environment {
+    environment {
         PYTHON = 'python3'
         CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
     }
+
     options {
         timestamps()
         ansiColor('xterm')
-        timeout(time: 2, unit: 'HOURS') // adjust as needed
+        timeout(time: 2, unit: 'HOURS')
     }
 
     stages {
@@ -34,8 +35,8 @@ pipeline {
         stage('Install Python Dependencies') {
             steps {
                 sh """
-                    ${PYTHON_BIN} -m pip install --upgrade pip
-                    ${PYTHON_BIN} -m pip install requests docx reportlab
+                    ${PYTHON} -m pip install --upgrade pip
+                    ${PYTHON} -m pip install requests docx reportlab
                 """
             }
         }
@@ -70,7 +71,7 @@ pipeline {
                     script {
                         try {
                             sh """
-                                ${PYTHON_BIN} run_cbn_workflow.py cpp || true
+                                ${PYTHON} run_cbn_workflow.py cpp || true
                             """
                         } catch (err) {
                             echo "⚠️ Workflow execution had issues but continuing to archive outputs."
@@ -83,13 +84,7 @@ pipeline {
         stage('Archive Generated Documents') {
             steps {
                 dir('CBN_Workflow_PY/output_js') {
-                    script {
-                        if (fileExists('.')) {
-                            archiveArtifacts artifacts: '**', allowEmptyArchive: true
-                        } else {
-                            echo "⚠️ No output files found to archive."
-                        }
-                    }
+                    archiveArtifacts artifacts: '**', allowEmptyArchive: true
                 }
             }
         }
@@ -97,10 +92,8 @@ pipeline {
 
     post {
         always {
-            node { // ✅ Wrap cleanWs in node to avoid MissingContextVariableException
-                echo "🧹 Cleaning workspace..."
-                cleanWs()
-            }
+            echo "🧹 Cleaning workspace..."
+            cleanWs()
         }
         success {
             echo "✅ Pipeline completed successfully."
