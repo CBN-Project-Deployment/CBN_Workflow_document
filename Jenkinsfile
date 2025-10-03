@@ -96,17 +96,17 @@ pipeline {
         stage('Run CbN Workflow') {
             steps {
                 dir('CBN_Workflow_PY') {
-                    sh """
-                      mkdir -p ../${OUTPUT_DIR}
-                      ${PYTHON} run_cbn_workflow.py cpp --input ../input_files/cpp/merged.cpp --output ../${OUTPUT_DIR}
-                    """
+                    sh '''
+                      mkdir -p ../generated_docs
+                      python3 run_cbn_workflow.py cpp
+                    '''
                 }
             }
         }
 
         stage('Archive Generated Documents') {
             steps {
-                archiveArtifacts artifacts: "${OUTPUT_DIR}/*", fingerprint: true
+                archiveArtifacts artifacts: 'generated_docs/*', fingerprint: true
             }
         }
     }
@@ -116,7 +116,7 @@ pipeline {
             echo "✅ Pipeline completed successfully. Documents generated."
         }
         failure {
-            echo "❌ Pipeline failed. Check logs for details."
+            echo "❌ Pipeline failed. Check the logs for details."
         }
         always {
             echo "🧹 Cleaning workspace..."
