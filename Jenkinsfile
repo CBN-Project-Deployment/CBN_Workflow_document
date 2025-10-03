@@ -1,124 +1,110 @@
 pipeline {
-    agent any
+    agent any  // Ensures workspace context is available for all steps
 
     environment {
-        CBN_PASSWORD = credentials('cbn-password')
+        CBN_PASSWORD = credentials('cbn-password') // securely access password
     }
 
     options {
         timestamps()
         ansiColor('xterm')
+        timeout(time: 60, unit: 'MINUTES') // prevent runaway jobs
     }
 
     stages {
 
         stage('Checkout SCM') {
             steps {
+                echo "🔄 Checking out main repository..."
                 checkout([$class: 'GitSCM',
                           branches: [[name: '*/main']],
-                          userRemoteConfigs: [[url: 'https://github.com/CBN-Project-Deployment/CBN_Workflow_document.git']]
-                ])
-            }
-        }
-
-        stage('Checkout Repositories') {
-            parallel {
-                stage('CBN Workflow Code') {
-                    steps {
-                        dir('CBN_Workflow_PY') {
-                            git url: 'https://github.com/Mrityunjai-demo/CBN_Workflow_PY.git', branch: 'main'
-                        }
-                    }
-                }
-                stage('Source App Code') {
-                    steps {
-                        dir('source_code') {
-                            git url: 'https://github.com/ChrisMaunder/MFC-GridCtrl.git', branch: 'master'
-                        }
-                    }
-                }
+                          userRemoteConfigs: [[url: 'https://github.com/CBN-Project-Deployment/CBN_Workflow_document.git']]])
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                sh 'python3 -m pip install --upgrade pip --user'
-                sh 'python3 -m pip install requests --user'
+                echo "📦 Installing Python dependencies..."
+                sh '''
+                    python3 -m pip install --upgrade pip --user
+                    python3 -m pip install requests --user
+                '''
             }
         }
 
         stage('Verify Required Files') {
             steps {
-                dir('CBN_Workflow_PY') {
-                    script {
-                        def requiredFiles = ['run_cbn_workflow.py', 'cbn_config.py']
-                        def missing = requiredFiles.findAll { !fileExists(it) }
-                        if (missing) {
-                            error "❌ Missing required files: ${missing.join(', ')}"
+                script {
+                    def requiredFiles = ['cbn_config.py', 'workflow_runner.py']
+                    for (file in requiredFiles) {
+                        if (!fileExists(file)) {
+                            error "❌ Required file ${file} not found!"
                         }
-                        echo "✅ All required Python files exist"
                     }
+                    echo "✅ All required files exist"
                 }
             }
         }
 
         stage('Prepare Input Files') {
             steps {
-                dir('CBN_Workflow_PY') {
-                    sh '''
-                        mkdir -p input_files/cpp input_files/tdd input_files/fdd
-                        echo "merged.cpp content" > input_files/cpp/merged.cpp
-                        echo "tdd input" > input_files/tdd/tdd_input.txt
-                        echo "fdd input" > input_files/fdd/fdd_input.txt
-                    '''
+                sh '''
+                    mkdir -p input_files
+                    echo "C++ input" > input_files/cpp.txt
+                    echo "TDD input" > input_files/tdd.txt
+                    echo "FDD input" > input_files/fdd.txt
+                '''
+            }
+        }
+
+        stage('Run Workflows in Parallel') {
+            parallel {
+                stage('C++ Workflow') {
+                    steps {
+                        script {
+                            try {
+                                sh 'python3 workflow_runner.py --type cpp --input input_files/cpp.txt'
+                            } catch (err) {
+                                echo "⚠️ C++ Workflow failed: ${err}"
+                                currentBuild.result = 'FAILURE'
+                            }
+                        }
+                    }
+                }
+                stage('TDD Workflow') {
+                    steps {
+                        script {
+                            try {
+                                sh 'python3 workflow_runner.py --type tdd --input input_files/tdd.txt'
+                            } catch (err) {
+                                echo "⚠️ TDD Workflow failed: ${err}"
+                                currentBuild.result = 'FAILURE'
+                            }
+                        }
+                    }
+                }
+                stage('FDD Workflow') {
+                    steps {
+                        script {
+                            try {
+                                sh 'python3 workflow_runner.py --type fdd --input input_files/fdd.txt'
+                            } catch (err) {
+                                echo "⚠️ FDD Workflow failed: ${err}"
+                                currentBuild.result = 'FAILURE'
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        stage('Run Workflows') {
-            parallel {
-
-                stage('Generate C++ Docs') {
-                    steps {
-                        dir('CBN_Workflow_PY') {
-                            script {
-                                echo "➡️ Running C++ workflow..."
-                                def status = sh(script: 'python3 run_cbn_workflow.py cpp', returnStatus: true)
-                                if (status != 0) {
-                                    echo "⚠️ C++ workflow failed (exit code ${status})"
-                                }
-                            }
-                        }
-                    }
-                }
-
-                stage('Generate TDD Docs') {
-                    steps {
-                        dir('CBN_Workflow_PY') {
-                            script {
-                                echo "➡️ Running TDD workflow..."
-                                def status = sh(script: 'python3 run_cbn_workflow.py tdd', returnStatus: true)
-                                if (status != 0) {
-                                    echo "⚠️ TDD workflow failed (exit code ${status})"
-                                }
-                            }
-                        }
-                    }
-                }
-
-                stage('Generate FDD Docs') {
-                    steps {
-                        dir('CBN_Workflow_PY') {
-                            script {
-                                echo "➡️ Running FDD workflow..."
-                                def status = sh(script: 'python3 run_cbn_workflow.py fdd', returnStatus: true)
-                                if (status != 0) {
-                                    echo "⚠️ FDD workflow failed (exit code ${status})"
-                                }
-                            }
-                        }
-                    }
-                }
+        stage('Archive Artifacts') {
+            when {
+                expression { fileExists('output_files') }
+            }
+            steps {
+                echo "📦 Archiving generated artifacts..."
+                archiveArtifacts artifacts: 'output_files/**', allowEmptyArchive: true
             }
         }
     }
@@ -126,22 +112,13 @@ pipeline {
     post {
         always {
             echo "🧹 Cleaning workspace..."
-            cleanWs()
+            cleanWs() // safe because top-level agent is defined
         }
         success {
-            dir('CBN_Workflow_PY') {
-                script {
-                    if (fileExists('output_files')) {
-                        echo "📦 Archiving generated artifacts..."
-                        archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
-                    } else {
-                        echo "⚠️ No output files to archive"
-                    }
-                }
-            }
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
-            echo "❌ Pipeline failed"
+            echo "❌ Pipeline failed!"
         }
     }
 }
