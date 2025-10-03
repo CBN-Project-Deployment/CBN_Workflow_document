@@ -10,6 +10,7 @@ pipeline {
     environment {
         PYTHON = 'python3'
         CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
+        WORKSPACE_DIR = "${env.WORKSPACE}"
     }
 
     stages {
@@ -68,6 +69,8 @@ pipeline {
                         mkdir -p .
                         > merged.cpp
 
+                        SOURCE_DIR="${WORKSPACE_DIR}/source_code"
+
                         files=(
                             "GridCtrl.h" "GridCtrl.cpp" "CellRange.h" "GridCell.h" "GridCell.cpp"
                             "GridCellBase.h" "GridCellBase.cpp" "GridDropTarget.h" "GridDropTarget.cpp"
@@ -75,7 +78,7 @@ pipeline {
                         )
 
                         for f in "${files[@]}"; do
-                            file_path=$(find ../../../../source_code -name "$f" | head -n 1)
+                            file_path=$(find "$SOURCE_DIR" -name "$f" | head -n 1)
                             if [ -f "$file_path" ]; then
                                 cat "$file_path" >> merged.cpp
                                 echo -e "\\n\\n" >> merged.cpp
