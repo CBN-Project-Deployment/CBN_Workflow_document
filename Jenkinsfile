@@ -10,7 +10,6 @@ pipeline {
     environment {
         PYTHON = 'python3'
         CBN_PASSWORD = credentials('CBN_PASSWORD_CREDENTIAL_ID')
-        OUTPUT_DIR = "generated_docs"
     }
 
     stages {
@@ -37,8 +36,8 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
-                  python3 -m pip install --upgrade pip
-                  python3 -m pip install requests docx reportlab
+                    python3 -m pip install --upgrade pip
+                    python3 -m pip install requests docx reportlab
                 '''
             }
         }
@@ -52,7 +51,7 @@ pipeline {
                             if (!fileExists(f)) { missing << f }
                         }
                         if (missing) {
-                            error "❌ Required workflow file(s) missing: ${missing.join(', ')}"
+                            error "❌ Required file(s) missing: ${missing.join(', ')}"
                         } else {
                             echo "✅ All workflow scripts are present."
                         }
@@ -63,33 +62,35 @@ pipeline {
 
         stage('Prepare Input Files') {
             steps {
-                sh '''#!/bin/bash
-                  set -euo pipefail
-                  mkdir -p input_files/cpp
-                  touch input_files/cpp/merged.cpp
+                dir('CBN_Workflow_PY') {
+                    sh '''#!/bin/bash
+                        set -euo pipefail
+                        mkdir -p input_files/cpp
+                        touch input_files/cpp/merged.cpp
 
-                  files=(
-                    "GridCtrl.h" "GridCtrl.cpp" "CellRange.h"
-                    "GridCell.h" "GridCell.cpp" "GridCellBase.h" "GridCellBase.cpp"
-                    "GridDropTarget.h" "GridDropTarget.cpp"
-                    "InPlaceEdit.h" "InPlaceEdit.cpp"
-                    "MemDC.h" "TitleTip.h" "TitleTip.cpp"
-                  )
+                        files=(
+                          "GridCtrl.h" "GridCtrl.cpp" "CellRange.h"
+                          "GridCell.h" "GridCell.cpp" "GridCellBase.h" "GridCellBase.cpp"
+                          "GridDropTarget.h" "GridDropTarget.cpp"
+                          "InPlaceEdit.h" "InPlaceEdit.cpp"
+                          "MemDC.h" "TitleTip.h" "TitleTip.cpp"
+                        )
 
-                  for f in "${files[@]}"; do
-                    if [ -f "source_code/$f" ]; then
-                      cat "source_code/$f" >> input_files/cpp/merged.cpp
-                    elif [ -f "source_code/GridCtrl/$f" ]; then
-                      cat "source_code/GridCtrl/$f" >> input_files/cpp/merged.cpp
-                    else
-                      echo "❌ Missing expected file: $f" >&2
-                      exit 1
-                    fi
-                    echo -e "\\n\\n" >> input_files/cpp/merged.cpp
-                  done
+                        for f in "${files[@]}"; do
+                          if [ -f "../source_code/$f" ]; then
+                            cat "../source_code/$f" >> input_files/cpp/merged.cpp
+                          elif [ -f "../source_code/GridCtrl/$f" ]; then
+                            cat "../source_code/GridCtrl/$f" >> input_files/cpp/merged.cpp
+                          else
+                            echo "❌ Missing expected file: $f" >&2
+                            exit 1
+                          fi
+                          echo -e "\\n\\n" >> input_files/cpp/merged.cpp
+                        done
 
-                  echo "✅ merged.cpp prepared"
-                '''
+                        echo "✅ merged.cpp prepared in CBN_Workflow_PY/input_files/cpp"
+                    '''
+                }
             }
         }
 
@@ -97,8 +98,7 @@ pipeline {
             steps {
                 dir('CBN_Workflow_PY') {
                     sh '''
-                      mkdir -p ../generated_docs
-                      python3 run_cbn_workflow.py cpp
+                        python3 run_cbn_workflow.py cpp
                     '''
                 }
             }
@@ -106,21 +106,23 @@ pipeline {
 
         stage('Archive Generated Documents') {
             steps {
-                archiveArtifacts artifacts: 'generated_docs/*', fingerprint: true
+                archiveArtifacts artifacts: 'CBN_Workflow_PY/output_js/**', fingerprint: true, onlyIfSuccessful: true
+                archiveArtifacts artifacts: 'generated_docs/**', fingerprint: true, onlyIfSuccessful: true
             }
         }
+
     }
 
     post {
         success {
-            echo "✅ Pipeline completed successfully. Documents generated."
-        }
-        failure {
-            echo "❌ Pipeline failed. Check the logs for details."
+            echo "✅ Pipeline succeeded."
         }
         always {
             echo "🧹 Cleaning workspace..."
             cleanWs()
+        }
+        failure {
+            echo "❌ Pipeline failed! Check logs for details."
         }
     }
 }
