@@ -81,13 +81,11 @@ pipeline {
                 stage('Generate C++ Docs') {
                     steps {
                         dir('CBN_Workflow_PY') {
-                            withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                script {
-                                    echo "➡️ Running C++ workflow..."
-                                    def status = sh(script: 'python3 run_cbn_workflow.py cpp', returnStatus: true)
-                                    if (status != 0) {
-                                        echo "⚠️ C++ workflow failed (exit code ${status})"
-                                    }
+                            script {
+                                echo "➡️ Running C++ workflow..."
+                                def status = sh(script: 'python3 run_cbn_workflow.py cpp', returnStatus: true)
+                                if (status != 0) {
+                                    echo "⚠️ C++ workflow failed (exit code ${status})"
                                 }
                             }
                         }
@@ -97,13 +95,11 @@ pipeline {
                 stage('Generate TDD Docs') {
                     steps {
                         dir('CBN_Workflow_PY') {
-                            withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                script {
-                                    echo "➡️ Running TDD workflow..."
-                                    def status = sh(script: 'python3 run_cbn_workflow.py tdd', returnStatus: true)
-                                    if (status != 0) {
-                                        echo "⚠️ TDD workflow failed (exit code ${status})"
-                                    }
+                            script {
+                                echo "➡️ Running TDD workflow..."
+                                def status = sh(script: 'python3 run_cbn_workflow.py tdd', returnStatus: true)
+                                if (status != 0) {
+                                    echo "⚠️ TDD workflow failed (exit code ${status})"
                                 }
                             }
                         }
@@ -113,13 +109,11 @@ pipeline {
                 stage('Generate FDD Docs') {
                     steps {
                         dir('CBN_Workflow_PY') {
-                            withCredentials([string(credentialsId: 'cbn-password', variable: 'CBN_PASSWORD')]) {
-                                script {
-                                    echo "➡️ Running FDD workflow..."
-                                    def status = sh(script: 'python3 run_cbn_workflow.py fdd', returnStatus: true)
-                                    if (status != 0) {
-                                        echo "⚠️ FDD workflow failed (exit code ${status})"
-                                    }
+                            script {
+                                echo "➡️ Running FDD workflow..."
+                                def status = sh(script: 'python3 run_cbn_workflow.py fdd', returnStatus: true)
+                                if (status != 0) {
+                                    echo "⚠️ FDD workflow failed (exit code ${status})"
                                 }
                             }
                         }
@@ -131,19 +125,23 @@ pipeline {
 
     post {
         always {
-            script {
-                echo "🧹 Cleaning workspace..."
-                cleanWs()
+            node {
+                script {
+                    echo "🧹 Cleaning workspace..."
+                    cleanWs()
+                }
             }
         }
         success {
-            script {
+            node {
                 dir('CBN_Workflow_PY') {
-                    if (fileExists('output_files')) {
-                        echo "📦 Archiving generated artifacts..."
-                        archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
-                    } else {
-                        echo "⚠️ No output files to archive"
+                    script {
+                        if (fileExists('output_files')) {
+                            echo "📦 Archiving generated artifacts..."
+                            archiveArtifacts artifacts: 'output_files/**/*', allowEmptyArchive: true
+                        } else {
+                            echo "⚠️ No output files to archive"
+                        }
                     }
                 }
             }
